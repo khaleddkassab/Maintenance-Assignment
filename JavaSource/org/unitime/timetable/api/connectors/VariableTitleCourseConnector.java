@@ -28,6 +28,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.lang.NullPointerException;
 
 import org.hibernate.Transaction;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,18 +71,29 @@ import org.unitime.timetable.solver.service.SolverServerService;
 public class VariableTitleCourseConnector extends ApiConnector {
 	@Autowired
 	private SolverServerService solverServerService;
-	
+	 NullPointerException ew;
 	@Override
 	protected String getName() {
 		return "var-title-crs";
 	}
-	
+
 	@Override
 	public void doGet(ApiHelper helper) throws IOException {
-		VariableTitleQuery vtq = helper.getRequest(VariableTitleQuery.class);		
+		VariableTitleQuery vtq = helper.getRequest(VariableTitleQuery.class);
 		validateRequest(vtq, helper);
 		helper.getSessionContext().checkPermissionAnyAuthority(getAcadSession(vtq, helper.getHibSession()), Right.ApiVariableTitleSectionLookup);
-		findClassAndUpdateQueryData(vtq, findCourse(vtq, helper.getHibSession()), helper.getHibSession());
+
+		// check if findCourse() method returns null
+		CourseOffering course = findCourse(vtq, helper.getHibSession());
+		if (course == null) {
+			throw new NullPointerException("Course is null.");
+		}
+		// check if findClassAndUpdateQueryData() method returns null
+		Class_ clazz = findClassAndUpdateQueryData(vtq, course, helper.getHibSession());
+		if (clazz == null) {
+			throw new NullPointerException("Class is null.");
+		}
+
 		helper.setResponse(vtq);
 	}
 	
@@ -211,10 +223,10 @@ public class VariableTitleCourseConnector extends ApiConnector {
 			for (InstrOfferingConfig ioc : courseOffering.getInstructionalOffering().getInstrOfferingConfigs()) {
 				if (ioc.getSchedulingSubparts().size() == 1 
 						&& ((ApplicationProperty.VariableTitleConfigName.value() != null 
-						        && ApplicationProperty.VariableTitleConfigName.value() != ""
+						        && (!ApplicationProperty.VariableTitleConfigName.value().equals(""))
 						        && ioc.getName().equals(ApplicationProperty.VariableTitleConfigName.value()))
 					        || (ApplicationProperty.VariableTitleConfigName.value() == null
-					           || ApplicationProperty.VariableTitleConfigName.value().trim() == ""))) {
+					           || ApplicationProperty.VariableTitleConfigName.value().trim() .equals("") ))) {
 					for (SchedulingSubpart ss : ioc.getSchedulingSubparts()) {
 						if (ss.getItype().getSis_ref().equals(ApplicationProperty.VariableTitleInstructionalType.value())) {
 							for (Class_ c : ss.getClasses()) {
@@ -239,13 +251,14 @@ public class VariableTitleCourseConnector extends ApiConnector {
 		return null;
 	}
 
-	private void findClassAndUpdateQueryData(VariableTitleQuery variableTitleQuery, CourseOffering courseOffering, org.hibernate.Session hibSession) {
+	private Class_ findClassAndUpdateQueryData(VariableTitleQuery variableTitleQuery, CourseOffering courseOffering, org.hibernate.Session hibSession) {
 		Class_ clazz = findClass(variableTitleQuery, courseOffering, hibSession);
 		if (clazz != null) {
 			variableTitleQuery.setFullCourseNumber(courseOffering.getCourseNbr());
 			variableTitleQuery.setExternalId(clazz.getExternalId(courseOffering));
 		}
 		variableTitleQuery.setStatus(findClassCreationStatus(courseOffering, clazz, hibSession));
+		return clazz;
 	}
 
 	private String findClassCreationStatus(CourseOffering courseOffering, Class_ clazz,
@@ -508,10 +521,14 @@ public class VariableTitleCourseConnector extends ApiConnector {
 	private InstrOfferingConfig findOrCreateVariableTitleConfig(InstructionalOffering instructionalOffering, org.hibernate.Session hibSession) {
 		InstrOfferingConfig instrOfferingConfig = null;
 		String vtConfigName = ApplicationProperty.VariableTitleConfigName.value().trim();
+
 		int cnt = 0;
 		while (instrOfferingConfig == null) {
 			if (instructionalOffering.getInstrOfferingConfigs() != null && instructionalOffering.existsConfig(vtConfigName, null)) {
 				InstrOfferingConfig checkIoc = findConfigWithName(instructionalOffering, vtConfigName);
+				if (checkIoc == null) {
+					throw new NullPointerException("checkIoc is null.");
+				}
 				if (isConfigValidForVariableTitle(checkIoc)) {
 					instrOfferingConfig = checkIoc;
 				} else {
@@ -521,7 +538,6 @@ public class VariableTitleCourseConnector extends ApiConnector {
 			} else {
 				instrOfferingConfig = createConfiguration(instructionalOffering, vtConfigName, hibSession);
 			}
-			
 		}
 		return instrOfferingConfig;
 
@@ -730,7 +746,7 @@ public class VariableTitleCourseConnector extends ApiConnector {
 	}
 
 	
-	public class VariableTitleQuery implements Serializable {
+	public static class VariableTitleQuery implements Serializable {
 		/**
 		 * 
 		 */
